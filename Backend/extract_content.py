@@ -9,12 +9,14 @@ import requests
 import spacy
 from rake_nltk import Rake
 from typing import List, Dict, Any
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 ############################### Step 1 - Accepting Tweet from user and fetching Tweet ######################################
+load_dotenv()  
 
 # Loading the env variables (API tokens)
 r'''
-load_dotenv()  
 
 bearer_token = os.getenv("bearer_token")
 client = tweepy.Client(bearer_token, wait_on_rate_limit=True)
@@ -129,10 +131,169 @@ def generate_search_queries(tweet_text):
 
 
 txt = "Court finds Nnamdi Kanu, leader of the Indigenous People of Biafra (IPOB), guilty of inciting violence during the #EndSARS protests, which led to the killing of security personnel and destruction of government properties in Lagos"
-lst = generate_search_queries(txt)
-print(lst)
+search_queries = generate_search_queries(txt)
+#print(search_queries)
 
 
 ############################### STEP 3 - Google news API  #################################################################
 
-news_bearer_token = os.getenv("bearer_token")
+news_bearer_token = os.getenv("news_bearer_token")
+SERPAPI_ENDPOINT = "https://serpapi.com/search"
+
+# Hardcoded config
+DEFAULT_HL = "en"               # language
+DEFAULT_GL = "us"               # country
+DEFAULT_MAX_RESULTS = 5         # top results per query
+DEFAULT_RETRIES = 3             # retry attempts
+DEFAULT_BACKOFF = 2.0           # seconds between retries
+
+
+def serpapi_google_news_search(query):
+    """
+    Minimal SerpAPI Google News search with:
+    - Hardcoded config
+    - Built-in rate limit handling
+    - Retry logic
+    - Clean output (returns [] on any failure)
+    """
+
+    params = {
+        "engine": "google_news",
+        "api_key": news_bearer_token,
+        "q": query,
+        "hl": DEFAULT_HL,
+        "gl": DEFAULT_GL,
+        "tbs": "sbd:1",              # sort by date (1 = newest first)
+        "output": "json"
+    }
+
+    for attempt in range(1, DEFAULT_RETRIES + 1):
+        try:
+            response = requests.get(
+                SERPAPI_ENDPOINT,
+                params=params,
+                timeout=15
+            )
+
+            # HTTP-level error (non-200)
+            response.raise_for_status()
+
+            data = response.json()
+
+            # ----- SerpAPI-level errors -----
+            if "error" in data:
+                message = data["error"].lower()
+
+                # Monthly rate-limit exceeded
+                if "exceeded monthly searches" in message:
+                    print("SerpAPI monthly rate limit exceeded.")
+                    return []
+
+                # Invalid key, invalid query, bad parameters
+                print(f"SerpAPI Error: {data['error']}")
+                return []
+
+            # Successful request
+            results = data.get("news_results", []) or []
+            return results[:DEFAULT_MAX_RESULTS]
+
+        except requests.exceptions.HTTPError as e:
+            print(f"[HTTP Error] {e}")
+            return []
+
+        except requests.exceptions.Timeout:
+            print(f"[Timeout] attempt {attempt}/{DEFAULT_RETRIES}")
+            time.sleep(DEFAULT_BACKOFF)
+
+        except requests.exceptions.RequestException as e:
+            print(f"[Network Error] {e} — retrying...")
+            time.sleep(DEFAULT_BACKOFF)
+
+        except Exception as e:
+            print(f"[Unexpected Error] {e}")
+            return []
+
+    print("Too many failures. Returning empty list.")
+    return []
+
+def normalize_search_api_response(raw_articles):
+    """
+    Takes a list of raw SerpAPI google_news results (news_results)
+    and normalizes them into a consistent structure.
+    """
+    normalized = []
+    for r in raw_articles:
+        normalized.append({
+            "title": r.get("title", "") or "",
+            "link": r.get("link", "") or "",
+            "date": r.get("date", "") or "",
+            "source": r.get("source", "") or "",
+            "raw": r,   # keep if you need more fields later
+        })
+    return normalized
+
+
+def dedupe_articles_by_link(articles):
+    """
+    Deduplicate articles based on their 'link'.
+    """
+    seen = set()
+    deduped = []
+    for a in articles:
+        link = a.get("link")
+        if not link:
+            continue
+        if link in seen:
+            continue
+        seen.add(link)
+        deduped.append(a)
+    return deduped
+
+
+def select_top_k_by_tfidf(tweet_text, articles, k=3):
+    """
+    Rank articles by TF-IDF cosine similarity between:
+      - tweet_text (claim)
+      - article titles
+    and return top-k.
+    """
+    if not articles:
+        return []
+
+    docs = [tweet_text] + [a["title"] for a in articles]
+
+    vectorizer = TfidfVectorizer(stop_words="english")
+    tfidf = vectorizer.fit_transform(docs)
+
+    tweet_vec = tfidf[0:1]
+    article_vecs = tfidf[1:]
+
+    sims = cosine_similarity(tweet_vec, article_vecs)[0]
+
+    for a, s in zip(articles, sims):
+        a["similarity"] = float(s)
+
+    sorted_articles = sorted(articles, key=lambda x: x["similarity"], reverse=True)
+    result = []
+    for a in sorted_articles[:k]:
+        result.append({
+            "title": a["title"],
+            "link": a["link"],
+            "similarity": a["similarity"]
+        })
+    return result[:k]
+
+
+gnews_response = []
+
+for q in search_queries:
+    raw_results = serpapi_google_news_search(q)
+    normalized = normalize_search_api_response(raw_results)
+    gnews_response.extend(normalized)
+
+deduped_list = dedupe_articles_by_link(gnews_response)
+
+top_3_similar_headlines = select_top_k_by_tfidf(txt,deduped_list)
+print(top_3_similar_headlines)
+
+
