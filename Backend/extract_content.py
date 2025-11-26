@@ -15,12 +15,14 @@ from nltk.tokenize import sent_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
+from model import classify_stance_nli
+
 
 ############################### Step 1 - Accepting Tweet from user and fetching Tweet ######################################
 load_dotenv()  
 
 # Loading the env variables (API tokens)
-
+'''
 bearer_token = os.getenv("bearer_token")
 client = tweepy.Client(bearer_token, wait_on_rate_limit=True)
 
@@ -95,11 +97,11 @@ while True:
     except Exception as e:
         print(f"\nAn unexpected error occurred: {e}\n")
         continue
-
+'''
 print("Now running the rest of the pipeline...")
 
 ############################### STEP 2 - Creating two search queries for Google News #############################
-#tweet_body = "Once called the Iron Lady of Asia, Sheik Hasina  was  slapped with a death sentence for crimes against humanity. The legacy has turned rusty. Hashina was charged with her role in the deadly crackdown of student protests in 2024. Hashina is currently exiled in India. The case can be appealed to the Supreme Court."
+tweet_body = "Sheikh Hasina, long regarded as the Iron Lady of Asia, has not been issued any death sentence and faces no charges related to crimes against humanity. Her legacy remains influential, and she continues to be recognized for stabilizing governance rather than suppressing protests. There was no confirmed deadly crackdown in 2024 attributed to her, and she is not exiled in India. She remains free and active, with no case pending in the Supreme Court."
 
 def clean_query_text(text):
     text = text or ""
@@ -466,5 +468,229 @@ for a in top_3_similar_articles:
     a["body"] = body
 
 res = extract_top_sentences_sbert(tweet_body,top_3_similar_articles,top_k_sentences=3)
-print(res)
 
+###################### STEP 5 classifying claims using NLI model ##############################################
+
+def attach_stance_to_evidence(claim_text, articles):
+    """
+    Takes:
+      - claim_text: tweet text (string)
+      - articles: list of article dicts, each with `evidence` list
+
+    Returns:
+      Same structure, but each evidence item also has:
+        - 'stance'
+        - 'nli_probs'
+    """
+    enriched = []
+
+    for art in articles:
+        new_art = {
+            "title": art.get("title"),
+            "link": art.get("link"),
+            "evidence": []
+        }
+
+        for ev in art.get("evidence", []):
+            sentence = ev.get("sentence", "")
+            if not sentence:
+                continue
+
+            # Call NLI model here
+            stance, probs = classify_stance_nli(claim_text, sentence)
+
+            new_art["evidence"].append({
+                "sentence": sentence,
+                "similarity": ev.get("similarity"),
+                "stance": stance,
+                "nli_probs": probs,
+            })
+
+        enriched.append(new_art)
+    return enriched
+
+def summarize_article_stance(
+    articles_with_sentence_stance,
+    support_thresh: float = 0.6,
+    refute_thresh: float = 0.6,
+    margin: float = 0.1,):
+
+    """
+    Given a list of articles where each article has sentence-level stance info,
+    compute an article-level stance.
+
+    Returns:
+        List of articles, each extended with:
+          - article_stance: 'supports' | 'refutes' | 'neutral' | 'mixed' | 'no_evidence'
+          - best_support_score: max entailment prob across evidence (or 0.0)
+          - best_refute_score: max contradiction prob across evidence (or 0.0)
+    """
+    summarized = []
+
+    for art in articles_with_sentence_stance:
+        evidence = art.get("evidence") or []
+
+        best_support = 0.0
+        best_refute = 0.0
+        has_any_probs = False
+
+        # We keep evidence as-is, just read from it
+        for ev in evidence:
+            probs = ev.get("nli_probs")
+            if not probs:
+                continue
+
+            has_any_probs = True
+            ent = float(probs.get("entailment", 0.0))
+            contra = float(probs.get("contradiction", 0.0))
+
+            if ent > best_support:
+                best_support = ent
+            if contra > best_refute:
+                best_refute = contra
+
+        # Decide article-level stance
+        if not evidence or not has_any_probs:
+            article_stance = "no_evidence"
+        else:
+            if (
+                best_support >= support_thresh
+                and best_support >= best_refute + margin
+            ):
+                article_stance = "supports"
+            elif (
+                best_refute >= refute_thresh
+                and best_refute >= best_support + margin
+            ):
+                article_stance = "refutes"
+            else:
+                # Some signal but conflicting / weak → mixed/neutral
+                if best_support >= support_thresh or best_refute >= refute_thresh:
+                    article_stance = "mixed"
+                else:
+                    article_stance = "neutral"
+
+        # Build output article: preserve original fields + add stance summary
+        new_art = {k: v for k, v in art.items()}  # shallow copy
+        new_art["article_stance"] = article_stance
+        new_art["best_support_score"] = best_support
+        new_art["best_refute_score"] = best_refute
+        new_art.pop("body", None)
+        summarized.append(new_art)
+
+    return summarized
+
+def aggregate_claim_verdict(
+    articles_with_article_stance,
+    claim_text: str,
+    support_thresh: float = 0.7,
+    refute_thresh: float = 0.7,
+    margin: float = 0.15,):
+
+
+    """
+    Aggregate article-level stances into a single claim-level verdict.
+
+    Args:
+        articles_with_article_stance: list of article dicts that already contain:
+            - article_stance
+            - best_support_score
+            - best_refute_score
+        claim_text: the original tweet / claim string
+        support_thresh: min support score to call claim likely true
+        refute_thresh: min refute score to call claim likely false
+        margin: required gap between best support and best refute
+
+    Returns:
+        dict with:
+            - claim: original claim_text
+            - verdict: 'likely_true' | 'likely_false' | 'uncertain'
+            - global_best_support
+            - global_best_refute
+            - counts of article stances
+            - articles: original list with stances (unchanged)
+    """
+    if not articles_with_article_stance:
+        return {
+            "claim": claim_text,
+            "verdict": "uncertain",
+            "reason": "no_articles_found",
+            "global_best_support": 0.0,
+            "global_best_refute": 0.0,
+            "num_supporting_articles": 0,
+            "num_refuting_articles": 0,
+            "num_neutral_articles": 0,
+            "num_mixed_articles": 0,
+            "num_no_evidence_articles": 0,
+            "articles": [],
+        }
+
+    global_best_support = 0.0
+    global_best_refute = 0.0
+
+    num_supporting = 0
+    num_refuting = 0
+    num_neutral = 0
+    num_mixed = 0
+    num_no_evidence = 0
+
+    for art in articles_with_article_stance:
+        stance = art.get("article_stance", "neutral")
+        bs = float(art.get("best_support_score", 0.0))
+        br = float(art.get("best_refute_score", 0.0))
+
+        if bs > global_best_support:
+            global_best_support = bs
+        if br > global_best_refute:
+            global_best_refute = br
+
+        if stance == "supports":
+            num_supporting += 1
+        elif stance == "refutes":
+            num_refuting += 1
+        elif stance == "neutral":
+            num_neutral += 1
+        elif stance == "mixed":
+            num_mixed += 1
+        elif stance == "no_evidence":
+            num_no_evidence += 1
+        else:
+            # Unknown label – treat as neutral
+            num_neutral += 1
+
+    # Decide claim-level verdict
+    if (
+        global_best_refute >= refute_thresh
+        and global_best_refute >= global_best_support + margin
+    ):
+        verdict = "likely_false"
+        reason = "strong_refuting_evidence"
+    elif (
+        global_best_support >= support_thresh
+        and global_best_support >= global_best_refute + margin
+    ):
+        verdict = "likely_true"
+        reason = "strong_supporting_evidence"
+    else:
+        verdict = "uncertain"
+        reason = "no_clear_winner"
+
+    return {
+        "claim": claim_text,
+        "verdict": verdict,
+        "reason": reason,
+        "global_best_support": global_best_support,
+        "global_best_refute": global_best_refute,
+        "num_supporting_articles": num_supporting,
+        "num_refuting_articles": num_refuting,
+        "num_neutral_articles": num_neutral,
+        "num_mixed_articles": num_mixed,
+        "num_no_evidence_articles": num_no_evidence,
+        "articles": articles_with_article_stance,
+    }
+
+score = attach_stance_to_evidence(tweet_body,res)
+articles_with_article_stance = summarize_article_stance(score)
+final_result = aggregate_claim_verdict(articles_with_article_stance, tweet_body)
+
+print(final_result)
