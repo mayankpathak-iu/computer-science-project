@@ -3,6 +3,7 @@ import time
 import numpy as np
 from dotenv import load_dotenv
 import os
+import sys
 import re
 import tweepy
 import requests
@@ -15,26 +16,44 @@ from nltk.tokenize import sent_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
-from model import classify_stance_nli
+
+# Ensure project root is on sys.path (works locally and in deployment)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
+
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+from models.model import classify_stance_nli
+
+start = time.time()
 
 
-############################### Step 1 - Accepting Tweet from user and fetching Tweet ######################################
+############################### Step 1 - Accepting tweet from user and fetching Tweet ######################################
 load_dotenv()  
 
 # Loading the env variables (API tokens)
-'''
+
 bearer_token = os.getenv("bearer_token")
 client = tweepy.Client(bearer_token, wait_on_rate_limit=True)
 
 def extract_tweet_id(url):
+
+    """
+    This function extracts the tweet id from the URL
+    
+    :param url: https://twitter.com/user/status/12345 (12345 is the Id)
+
+    :Return: if match exists or None 
+    """
     match = re.search(r"status/(\d+)", url)
     return match.group(1) if match else None
 
 # Asking tweet input from the user
 def get_tweets(tweetid, max_retries=3, sleep_seconds=60):
+
     """
-    Safely calls Twitter API with rate-limit handling.
-    Retries automatically when hitting 429 TooManyRequests.
+    Calls X API safely with rate-limit handling.
+    Retries automatically when hitting-TooManyRequests.
     """
     for attempt in range(1, max_retries + 1):
         try:
@@ -97,19 +116,33 @@ while True:
     except Exception as e:
         print(f"\nAn unexpected error occurred: {e}\n")
         continue
-'''
+
 print("Now running the rest of the pipeline...")
 
-############################### STEP 2 - Creating two search queries for Google News #############################
-tweet_body = "Sheikh Hasina, long regarded as the Iron Lady of Asia, has not been issued any death sentence and faces no charges related to crimes against humanity. Her legacy remains influential, and she continues to be recognized for stabilizing governance rather than suppressing protests. There was no confirmed deadly crackdown in 2024 attributed to her, and she is not exiled in India. She remains free and active, with no case pending in the Supreme Court."
+############################### STEP 2 - Creating search queries with different keywords to hit Google News API #############################
 
 def clean_query_text(text):
+
+    """
+    A reuable function to clean a text
+    
+    :param text
+    :Returns processed text
+    """
+
     text = text or ""
     text = re.sub(r"[^A-Za-z0-9\.\?\!\s]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
 def dedupe_words_preserve_order(text):
+
+    """
+    This function ensure the text has unique keywords.
+    
+    :param text: Description
+    :Returns: Text without duplicates
+    """
     seen = set()
     result_words = []
     for w in text.split():
@@ -120,19 +153,51 @@ def dedupe_words_preserve_order(text):
     return " ".join(result_words)
 
 def generate_search_queries(tweet_text, max_queries=3):
+    
     """
-    Generate strong, news-friendly search queries from the tweet text.
-    """
-    import nltk
-    nltk.download("stopwords")
-    nltk.download("punkt")
+    Generate optimized search-engine queries from a tweet/claim for retrieving
+    relevant news articles.
 
+    This function extracts key semantic elements from the input text using
+    three complementary NLP strategies:
+
+    1. Named Entity Recognition (NER) via spaCy
+       - Extracts important real-world entities such as persons, organizations,
+         locations, and events.
+
+    2. Keyword extraction via RAKE (Rapid Automatic Keyword Extraction)
+       - Identifies statistically relevant multi-word keyword phrases.
+
+    3. Query construction and cleanup
+       - Combines entities and keywords to form concise, high-signal queries.
+       - Removes duplicate words and special characters.
+       - Preserves keyword order to maintain semantic meaning.
+
+    The output queries are designed to:
+    - Maximize recall while searching news APIs.
+    - Reduce noise from irrelevant results.
+    - Capture both entity-centric and concept-centric queries.
+
+    params: The raw tweet or claim text.
+
+    Returns: List: A list of 1–3 cleaned and optimized search queries
+                   suitable for use with search APIs (Google News).
+
+    Example:
+        Input:
+            "Germany announced a ban on AI-generated videos in political campaigns"
+
+        Output:["Germany AI generated videos ban","AI generated political campaigns"]
+
+    Notes: Results may vary depending on tweet length and entity presence.
+    """
+   
     nlp = spacy.load("en_core_web_sm")
     doc = nlp(tweet_text)
 
     queries = []
 
-    # --------- 1. Named Entities ---------
+    # Named Entities
     persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
     gpes = [ent.text for ent in doc.ents if ent.label_ == "GPE"]
     dates = [ent.text for ent in doc.ents if ent.label_ == "DATE"]
@@ -140,7 +205,7 @@ def generate_search_queries(tweet_text, max_queries=3):
     # Pick main person if exists
     main_person = persons[0] if persons else None
 
-    # --------- 2. Noun Phrases ---------
+    # Noun Phrases
     noun_phrases = [chunk.text for chunk in doc.noun_chunks]
 
     # Filter event-like phrases
@@ -149,7 +214,7 @@ def generate_search_queries(tweet_text, max_queries=3):
         if any(x in p.lower() for x in ["death", "sentence", "crime", "protest", "crackdown", "attack", "ban", "violence"])
     ]
 
-    # --------- 3. RAKE Keywords (cleaned) ---------
+    # RAKE Keywords (cleaned)
     rake = Rake()
     rake.extract_keywords_from_text(tweet_text)
     raw_keywords = rake.get_ranked_phrases()[:6]
@@ -199,7 +264,7 @@ def generate_search_queries(tweet_text, max_queries=3):
 
 search_queries = generate_search_queries(tweet_body)
 
-############################### STEP 3 - Google news API  #################################################################
+############################### STEP 3 - Using search queries on Google news API  #################################################################
 
 news_bearer_token = os.getenv("news_bearer_token")
 SERPAPI_ENDPOINT = "https://serpapi.com/search"
@@ -244,7 +309,7 @@ def serpapi_google_news_search(query):
 
             data = response.json()
 
-            # ----- SerpAPI-level errors -----
+            # SerpAPI-level errors
             if "error" in data:
                 message = data["error"].lower()
 
@@ -281,9 +346,12 @@ def serpapi_google_news_search(query):
     return []
 
 def normalize_search_api_response(raw_articles):
+
     """
-    Takes a list of raw SerpAPI google_news results (news_results)
+    Takes a list of raw SerpAPI Google news response (news_results)
     and normalizes them into a consistent structure.
+    :params: SerpAPI response
+    :Return: Formatted list
     """
     normalized = []
     for r in raw_articles:
@@ -298,8 +366,13 @@ def normalize_search_api_response(raw_articles):
 
 
 def dedupe_articles_by_link(articles):
+
     """
+    This function checks for common articles which needs to be removed. 
+    (Different search queries can result in same articles)
     Deduplicate articles based on their 'link'.
+    :params: Article list
+    :Return: Unique list of Articles
     """
     seen = set()
     deduped = []
@@ -315,11 +388,14 @@ def dedupe_articles_by_link(articles):
 
 
 def select_top_k_by_tfidf(tweet_text, articles, k=3):
+
     """
     Rank articles by TF-IDF cosine similarity between:
       - tweet_text (claim)
       - article titles
     and return top-k.
+    :params: original claim, unique list of articles, number of top similar articles
+    :Return: Top K articles with similarity scores
     """
     if not articles:
         return []
@@ -365,10 +441,13 @@ SBERT_MODEL_NAME = "all-MiniLM-L6-v2"
 sbert_model = SentenceTransformer(SBERT_MODEL_NAME)
 
 def fetch_article_body(url):
+
     """
     Download and extract main article text from a URL.
-    Returns at most `max_chars` characters.
+    :params:URL of top K articles
+    :Return: Body of article
     """
+
     if not url:
         return ""
 
@@ -386,26 +465,36 @@ def fetch_article_body(url):
         return ""
     
 def split_sentences(text):
+
+    """
+    Function to tokenize each sentence. We split the sentence based on '.'
+    :param text: Description
+    :Return: tokenized text
+    """
     text = (text or "").strip()
     if not text:
         return []
     return sent_tokenize(text)
 
 def sbert_encode(texts):
+
     """
-    Helper: encode a list of texts with SBERT.
-    Returns a 2D numpy array: (n_texts, embedding_dim)
+    This function encodes a list of texts with SBERT.
+    :params: tokenized sentences
+    :Return: A 2D numpy array: (n_texts, embedding_dim)
     """
     return sbert_model.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
 
 def extract_top_sentences_sbert(tweet_text, articles, top_k_sentences=3):
+
     """
     For each article, compute SBERT similarity between:
       - tweet_text
       - each sentence in article['body']
     Keep top_m_per_article sentences (and their similarity).
     Adds 'evidence_sentences' list to each article:
-    Returns the modified articles list.
+    :params: claim, articles, and number of top similar sentences
+    Return: the modified article list with similar sentences
     """
     results = []
 
@@ -472,16 +561,27 @@ res = extract_top_sentences_sbert(tweet_body,top_3_similar_articles,top_k_senten
 ###################### STEP 5 classifying claims using NLI model ##############################################
 
 def attach_stance_to_evidence(claim_text, articles):
+
     """
-    Takes:
-      - claim_text: tweet text (string)
-      - articles: list of article dicts, each with `evidence` list
+    Runs an NLI model on each evidence sentence to determine whether it
+    supports, refutes, or is neutral toward the claim.
+
+    For every evidence sentence, this function:
+    - Compares it with the claim using a pretrained NLI model.
+    - Assigns a stance label (supports / refutes / neutral).
+    - Stores confidence scores for each class.
+
+    params:
+        articles: List of articles with extracted evidence sentences.
+        claim: The tweet or claim text.
+        tokenizer: Tokenizer for the NLI model.
+        model: Pretrained NLI model.
 
     Returns:
-      Same structure, but each evidence item also has:
-        - 'stance'
-        - 'nli_probs'
+        Articles with stance labels and probability scores added to
+        each evidence sentence.
     """
+
     enriched = []
 
     for art in articles:
@@ -587,7 +687,6 @@ def aggregate_claim_verdict(
     refute_thresh: float = 0.7,
     margin: float = 0.15,):
 
-
     """
     Aggregate article-level stances into a single claim-level verdict.
 
@@ -686,11 +785,15 @@ def aggregate_claim_verdict(
         "num_neutral_articles": num_neutral,
         "num_mixed_articles": num_mixed,
         "num_no_evidence_articles": num_no_evidence,
-        "articles": articles_with_article_stance,
+        #"articles": articles_with_article_stance,
     }
 
 score = attach_stance_to_evidence(tweet_body,res)
 articles_with_article_stance = summarize_article_stance(score)
 final_result = aggregate_claim_verdict(articles_with_article_stance, tweet_body)
 
-print(final_result)
+end = time.time()
+
+print(final_result) 
+print('--------------------------------------------------------------------------------')
+print(f"Pipeline execution time: {end - start:.2f} seconds")

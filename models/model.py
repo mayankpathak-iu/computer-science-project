@@ -129,21 +129,3 @@ def classify_stance_nli(claim_text: str, evidence_sentence: str):
     return _nli_label_probs(logits)
 
 
-
-#sentence = ["Biafran separatist leader sentenced to life on terrorism charges by Nigerian court","welcome to CS project"]
-#res = sbert_encode(sentence)
-#print(res)
-
-#TESTING 
-
-claim = "Nnamdi Kanu was sentenced to life in prison."
-evidence1 = "A Nigerian court sentenced Nnamdi Kanu to life imprisonment on terrorism charges."
-evidence2 = "The court acquitted Nnamdi Kanu and dropped all charges."
-
-print(">>> SUPPORT CASE")
-s1, p1 = classify_stance_nli(claim, evidence1)
-print(s1, p1)
-
-print("\n>>> REFUTE CASE")
-s2, p2 = classify_stance_nli(claim, evidence2)
-print(s2, p2)
