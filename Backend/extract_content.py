@@ -17,6 +17,12 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 
+load_dotenv()  
+bearer_token = os.getenv("bearer_token")
+client = tweepy.Client(bearer_token, wait_on_rate_limit=True)
+news_bearer_token = os.getenv("news_bearer_token")
+SERPAPI_ENDPOINT = "https://serpapi.com/search"
+
 # Ensure project root is on sys.path (works locally and in deployment)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
@@ -27,14 +33,7 @@ from models.model import classify_stance_nli
 
 start = time.time()
 
-
 ############################### Step 1 - Accepting tweet from user and fetching Tweet ######################################
-load_dotenv()  
-
-# Loading the env variables (API tokens)
-
-bearer_token = os.getenv("bearer_token")
-client = tweepy.Client(bearer_token, wait_on_rate_limit=True)
 
 def extract_tweet_id(url):
 
@@ -49,7 +48,7 @@ def extract_tweet_id(url):
     return match.group(1) if match else None
 
 # Asking tweet input from the user
-def get_tweets(tweetid, max_retries=3, sleep_seconds=60):
+def get_tweets(client, tweetid, max_retries=3, sleep_seconds=60):
 
     """
     Calls X API safely with rate-limit handling.
@@ -82,40 +81,6 @@ def get_tweets(tweetid, max_retries=3, sleep_seconds=60):
     print("[rate-limit] Failed after maximum retries.")
     return None
 
-
-while True:
-
-    url = input("Please Enter the tweet link: ")
-    tweetid = extract_tweet_id(url)
-
-    if url.lower() in ["exit", "quit"]:
-        print("Exiting...")
-        break
-
-    if not tweetid:
-        print("\nError: That doesn't look like a valid tweet link.")
-        continue
-
-    try:
-        response = get_tweets(tweetid)
-
-        if not response or not response.data:
-            print("\nError: Tweet not found or rate limited.\n")
-            continue
-
-        tweet_obj = response.data[0]
-        tweet_created_date = tweet_obj.created_at
-        tweet_body = tweet_obj.text
-
-        print("Tweet:", tweet_body)
-        print("Created:", tweet_created_date)
-
-        #exit the loop now
-        break
-
-    except Exception as e:
-        print(f"\nAn unexpected error occurred: {e}\n")
-        continue
 
 print("Now running the rest of the pipeline...")
 
@@ -262,12 +227,7 @@ def generate_search_queries(tweet_text, max_queries=3):
 
     return final[:max_queries]
 
-search_queries = generate_search_queries(tweet_body)
-
 ############################### STEP 3 - Using search queries on Google news API  #################################################################
-
-news_bearer_token = os.getenv("news_bearer_token")
-SERPAPI_ENDPOINT = "https://serpapi.com/search"
 
 # Hardcoded config
 DEFAULT_HL = "en"               # language
@@ -423,18 +383,6 @@ def select_top_k_by_tfidf(tweet_text, articles, k=3):
         })
     return result[:k]
 
-
-gnews_response = []
-
-for q in search_queries:
-    raw_results = serpapi_google_news_search(q)
-    normalized = normalize_search_api_response(raw_results)
-    gnews_response.extend(normalized)
-
-deduped_list = dedupe_articles_by_link(gnews_response)
-top_3_similar_articles = select_top_k_by_tfidf(tweet_body,deduped_list)
-
-
 ############################### STEP 4 - Article body collection (Evidence)  #################################################################
 
 SBERT_MODEL_NAME = "all-MiniLM-L6-v2"
@@ -550,13 +498,6 @@ def extract_top_sentences_sbert(tweet_text, articles, top_k_sentences=3):
         })
 
     return results
-
-for a in top_3_similar_articles:
-    url = a.get("link")
-    body = clean_query_text(fetch_article_body(url))
-    a["body"] = body
-
-res = extract_top_sentences_sbert(tweet_body,top_3_similar_articles,top_k_sentences=3)
 
 ###################### STEP 5 classifying claims using NLI model ##############################################
 
@@ -785,15 +726,85 @@ def aggregate_claim_verdict(
         "num_neutral_articles": num_neutral,
         "num_mixed_articles": num_mixed,
         "num_no_evidence_articles": num_no_evidence,
-        #"articles": articles_with_article_stance,
     }
 
-score = attach_stance_to_evidence(tweet_body,res)
-articles_with_article_stance = summarize_article_stance(score)
-final_result = aggregate_claim_verdict(articles_with_article_stance, tweet_body)
+def run_pipeline_from_tweet_text(url, top_k_articles = 3):
+
+    # 1) validate & extract tweet id
+
+    tweetid = extract_tweet_id(url)
+    if not tweetid:
+        raise ValueError("Invalid tweet link. Expected something like https://x.com/user/status/12345")
+
+    # 2) call X API safely
+    response = get_tweets(client, tweetid)
+
+    if not response or not response.data:
+        raise ValueError("Tweet not found or rate limited")
+
+    tweet_obj = response.data[0]
+    tweet_created_date = tweet_obj.created_at
+    tweet_body = tweet_obj.text
+    
+    # 3) generate queries
+    search_queries = generate_search_queries(tweet_body)
+
+    # 4) search and normalize
+    gnews_response = []
+    for q in search_queries:
+        raw_results = serpapi_google_news_search(q)
+        normalized = normalize_search_api_response(raw_results)
+        gnews_response.extend(normalized)
+
+    # 5) dedupe
+    deduped_list = dedupe_articles_by_link(gnews_response)
+
+    # 6) top-k similar by TF-IDF
+    top_similar_articles = select_top_k_by_tfidf(
+        tweet_body,
+        deduped_list,
+        k=top_k_articles,
+    )
+
+    # 7) fetch bodies
+    for a in top_similar_articles:
+        url = a.get("link")
+        body = clean_query_text(fetch_article_body(url))
+        a["body"] = body
+
+    # 8) SBERT sentence extraction
+    articles_with_evidence = extract_top_sentences_sbert(
+        tweet_body,
+        top_similar_articles,
+        top_k_sentences=3,
+    )
+
+    # 9) NLI stance per sentence
+    articles_with_sentence_stance = attach_stance_to_evidence(
+        tweet_body,
+        articles_with_evidence,
+    )
+
+    # 10) article-level stance
+    articles_with_article_stance = summarize_article_stance(
+        articles_with_sentence_stance
+    )
+    # 10) claim-level verdict
+    final_result = aggregate_claim_verdict(
+        articles_with_article_stance,
+        tweet_body,
+    )
+    return final_result
+
+url = "https://x.com/DeusXMachina14/status/1990469787395432560"  # or any tweet
+
+result = run_pipeline_from_tweet_text(url,3)
 
 end = time.time()
-
-print(final_result) 
 print('--------------------------------------------------------------------------------')
+
+print(f"Verdict: {result['verdict']} | "f"Support Score: {result['global_best_support']:.3f} | "f"Refute Score: {result['global_best_refute']:.3f}")
+
+print('--------------------------------------------------------------------------------')
+
 print(f"Pipeline execution time: {end - start:.2f} seconds")
