@@ -219,6 +219,78 @@
     .message.info {
       color: var(--muted);
     }
+    .articles-container {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Card */
+.article-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px 16px;
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Title link */
+.article-title {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #f5f5f5;
+  text-decoration: none;
+}
+
+.article-title:hover {
+  text-decoration: underline;
+}
+
+/* Meta row */
+.article-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: #a0a0a0;
+}
+
+/* Stance badge */
+.stance-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Colors per stance */
+.stance-supports {
+  background: rgba(46, 204, 113, 0.12);
+  color: #2ecc71;
+}
+
+.stance-refutes {
+  background: rgba(231, 76, 60, 0.12);
+  color: #e74c3c;
+}
+
+.stance-neutral,
+.stance-mixed {
+  background: rgba(241, 196, 15, 0.12);
+  color: #f1c40f;
+}
+
+/* Small scores text */
+.article-scores {
+  font-size: 0.75rem;
+  color: #8a8a8a;
+}
+
   </style>
 </head>
 <body>
@@ -260,13 +332,13 @@
       </div>
 
       <div id="message" class="message info">
+      <div id="articlesContainer" class="articles-container"></div>
         Waiting for a tweet URL.
       </div>
     </div>
   </div>
 
-  <script>
-
+ <script>
   let isBusy = false;
 
   function isValidTweetUrl(url) {
@@ -275,6 +347,7 @@
 
   function setMessage(text, type = "info") {
     const msgEl = document.getElementById("message");
+    if (!msgEl) return;
     msgEl.textContent = text;
     msgEl.className = "message " + type;
   }
@@ -285,21 +358,82 @@
     const btn = document.getElementById("analyzeButton");
     const label = document.getElementById("btnLabel");
 
-    input.disabled = busy;
-    btn.disabled = busy;
-    label.textContent = busy ? "Checking…" : "Analyze";
+    if (input) input.disabled = busy;
+    if (btn) btn.disabled = busy;
+    if (label) label.textContent = busy ? "Checking…" : "Analyze";
 
     if (busy) {
       setMessage("Analyzing tweet… please wait.", "info");
     }
   }
 
-  async function handleAnalyzeClick() {
+  function renderArticles(articles) {
+    const container = document.getElementById("articlesContainer");
+    if (!container) {
+      console.warn("No #articlesContainer in DOM; skipping article rendering.");
+      return;
+    }
 
+    container.innerHTML = ""; // clear previous run
+
+    if (!articles || articles.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "article-scores";
+      empty.textContent = "No articles found or no strong evidence.";
+      container.appendChild(empty);
+      return;
+    }
+
+    articles.forEach((art, idx) => {
+      const card = document.createElement("div");
+      card.className = "article-card";
+
+      const title = art.title || "Untitled article";
+      const link = art.link || "#";
+      const stance = art.article_stance || "neutral";
+
+      const support = Number(art.best_support_score ?? 0);
+      const refute = Number(art.best_refute_score ?? 0);
+
+      const stanceLabel =
+        stance === "supports"
+          ? "Supports"
+          : stance === "refutes"
+          ? "Refutes"
+          : stance === "mixed"
+          ? "Mixed"
+          : "Neutral";
+
+      const stanceClass =
+        stance === "supports"
+          ? "stance-supports"
+          : stance === "refutes"
+          ? "stance-refutes"
+          : "stance-neutral";
+
+      card.innerHTML = `
+        <a href="${link}" target="_blank" rel="noopener noreferrer" class="article-title">
+          ${idx + 1}. ${title}
+        </a>
+        <div class="article-meta">
+          <span class="stance-badge ${stanceClass}">
+            ${stanceLabel}
+          </span>
+          <span class="article-scores">
+            S: ${support.toFixed(2)} · R: ${refute.toFixed(2)}
+          </span>
+        </div>
+      `;
+
+      container.appendChild(card);
+    });
+  }
+
+  async function handleAnalyzeClick() {
     if (isBusy) return;
 
     const input = document.getElementById("tweetInput");
-    const url = input.value.trim();
+    const url = (input?.value || "").trim();
 
     if (!isValidTweetUrl(url)) {
       setMessage("Please paste a valid X/Twitter status link.", "error");
@@ -312,7 +446,7 @@
       const res = await fetch("http://127.0.0.1:8000/check_tweet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tweet_url: url })
+        body: JSON.stringify({ tweet_url: url }),
       });
 
       if (!res.ok) {
@@ -321,6 +455,7 @@
           const errJson = await res.json();
           if (errJson.detail) errMsg = errJson.detail;
         } catch (_) {}
+        console.error("Backend error status:", res.status, errMsg);
         setMessage(errMsg, "error");
         return;
       }
@@ -328,23 +463,24 @@
       const data = await res.json();
       console.log("Backend response:", data);
 
-      const verdict = data.verdict;
-      const support = data.global_best_support.toFixed(3);
-      const refute = data.global_best_refute.toFixed(3);
+      const verdict = data.verdict ?? "unknown";
+      const support = Number(data.global_best_support ?? 0).toFixed(3);
+      const refute = Number(data.global_best_refute ?? 0).toFixed(3);
 
       setMessage(
         `Verdict: ${verdict} · Support: ${support} · Refute: ${refute}`,
         "info"
       );
 
+      // Render top-k articles
+      renderArticles(data.articles || []);
     } catch (err) {
-      console.error(err);
-      setMessage("Backend not reachable. Is FastAPI running?", "error");
+      console.error("Error in handleAnalyzeClick:", err);
+      setMessage("UI error: " + (err?.message || "Unknown error"), "error");
     } finally {
       setBusyState(false);
     }
   }
-
 </script>
 
 </body>
