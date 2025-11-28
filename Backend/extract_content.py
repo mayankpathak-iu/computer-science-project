@@ -31,8 +31,6 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 from models.model import classify_stance_nli
 
-start = time.time()
-
 ############################### Step 1 - Accepting tweet from user and fetching Tweet ######################################
 
 def extract_tweet_id(url):
@@ -728,7 +726,7 @@ def aggregate_claim_verdict(
         "num_no_evidence_articles": num_no_evidence,
     }
 
-def run_pipeline_from_tweet_text(url, top_k_articles = 3):
+def run_pipeline_from_tweet_url(url, top_k_articles = 3):
 
     # 1) validate & extract tweet id
 
@@ -796,15 +794,5 @@ def run_pipeline_from_tweet_text(url, top_k_articles = 3):
     )
     return final_result
 
-url = "https://x.com/DeusXMachina14/status/1990469787395432560"  # or any tweet
+#url = "https://x.com/DeusXMachina14/status/1990469787395432560"  # or any tweet
 
-result = run_pipeline_from_tweet_text(url,3)
-
-end = time.time()
-print('--------------------------------------------------------------------------------')
-
-print(f"Verdict: {result['verdict']} | "f"Support Score: {result['global_best_support']:.3f} | "f"Refute Score: {result['global_best_refute']:.3f}")
-
-print('--------------------------------------------------------------------------------')
-
-print(f"Pipeline execution time: {end - start:.2f} seconds")

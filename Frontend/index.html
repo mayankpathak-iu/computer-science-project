@@ -248,13 +248,10 @@
           />
         </div>
 
-        <button
-          id="analyzeButton"
-          class="btn-primary"
-          onclick="handleAnalyzeClick()"
-        >
+      <button id="analyzeButton" onclick="handleAnalyzeClick()">
           <span id="btnLabel">Analyze</span>
-        </button>
+      </button>
+
       </div>
 
       <div class="hint-row">
@@ -269,34 +266,86 @@
   </div>
 
   <script>
-    // For now: just basic UX & validation placeholder.
-    // Backend/API wiring + rate-limit handling will come in the next steps.
 
-    function isValidTweetUrl(url) {
-      if (!url) return false;
-      return /https?:\/\/(twitter|x)\.com\/.+\/status\/\d+/.test(url.trim());
+  let isBusy = false;
+
+  function isValidTweetUrl(url) {
+    return /https?:\/\/(twitter|x)\.com\/.+\/status\/\d+/.test(url.trim());
+  }
+
+  function setMessage(text, type = "info") {
+    const msgEl = document.getElementById("message");
+    msgEl.textContent = text;
+    msgEl.className = "message " + type;
+  }
+
+  function setBusyState(busy) {
+    isBusy = busy;
+    const input = document.getElementById("tweetInput");
+    const btn = document.getElementById("analyzeButton");
+    const label = document.getElementById("btnLabel");
+
+    input.disabled = busy;
+    btn.disabled = busy;
+    label.textContent = busy ? "Checking…" : "Analyze";
+
+    if (busy) {
+      setMessage("Analyzing tweet… please wait.", "info");
+    }
+  }
+
+  async function handleAnalyzeClick() {
+
+    if (isBusy) return;
+
+    const input = document.getElementById("tweetInput");
+    const url = input.value.trim();
+
+    if (!isValidTweetUrl(url)) {
+      setMessage("Please paste a valid X/Twitter status link.", "error");
+      return;
     }
 
-    function setMessage(text, type = "info") {
-      const msgEl = document.getElementById("message");
-      msgEl.textContent = text;
-      msgEl.className = "message " + type;
-    }
+    setBusyState(true);
 
-    function handleAnalyzeClick() {
-      const input = document.getElementById("tweetInput");
-      const url = input.value.trim();
+    try {
+      const res = await fetch("http://127.0.0.1:8000/check_tweet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tweet_url: url })
+      });
 
-      if (!isValidTweetUrl(url)) {
-        setMessage("Please paste a valid X/Twitter status link.", "error");
+      if (!res.ok) {
+        let errMsg = "Server error.";
+        try {
+          const errJson = await res.json();
+          if (errJson.detail) errMsg = errJson.detail;
+        } catch (_) {}
+        setMessage(errMsg, "error");
         return;
       }
 
-      // Step 1 behaviour: just acknowledge input.
-      // In the next steps, this will call the backend and lock the UI.
-      setMessage("Ready to analyze this tweet in the next step.", "info");
-      console.log("Tweet URL captured:", url);
+      const data = await res.json();
+      console.log("Backend response:", data);
+
+      const verdict = data.verdict;
+      const support = data.global_best_support.toFixed(3);
+      const refute = data.global_best_refute.toFixed(3);
+
+      setMessage(
+        `Verdict: ${verdict} · Support: ${support} · Refute: ${refute}`,
+        "info"
+      );
+
+    } catch (err) {
+      console.error(err);
+      setMessage("Backend not reachable. Is FastAPI running?", "error");
+    } finally {
+      setBusyState(false);
     }
-  </script>
+  }
+
+</script>
+
 </body>
 </html>
