@@ -79,9 +79,6 @@ def get_tweets(client, tweetid, max_retries=3, sleep_seconds=60):
     print("[rate-limit] Failed after maximum retries.")
     return None
 
-
-print("Now running the rest of the pipeline...")
-
 ############################### STEP 2 - Creating search queries with different keywords to hit Google News API #############################
 
 def clean_query_text(text):
@@ -724,6 +721,7 @@ def aggregate_claim_verdict(
         "num_neutral_articles": num_neutral,
         "num_mixed_articles": num_mixed,
         "num_no_evidence_articles": num_no_evidence,
+        "articles": articles_with_article_stance
     }
 
 def run_pipeline_from_tweet_url(url, top_k_articles = 3):
@@ -743,7 +741,8 @@ def run_pipeline_from_tweet_url(url, top_k_articles = 3):
     tweet_obj = response.data[0]
     tweet_created_date = tweet_obj.created_at
     tweet_body = tweet_obj.text
-    
+    print("Now running the rest of the pipeline...")
+
     # 3) generate queries
     search_queries = generate_search_queries(tweet_body)
 
@@ -795,4 +794,3 @@ def run_pipeline_from_tweet_url(url, top_k_articles = 3):
     return final_result
 
 #url = "https://x.com/DeusXMachina14/status/1990469787395432560"  # or any tweet
-

@@ -91,12 +91,22 @@
       letter-spacing: 0.12em;
     }
 
-    .card-body {
-      margin-top: 8px;
-      background: radial-gradient(circle at top left, #111827, #020617);
+    .card {
+      max-width: 780px;          /* was probably ~600px */
+      margin: 40px auto;
+      padding: 28px 28px 32px;
       border-radius: 18px;
-      border: 1px solid rgba(55, 65, 81, 0.9);
-      padding: 18px 18px 16px;
+      background: radial-gradient(circle at top left, #1f2933 0%, #020617 55%);
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.65);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+
+    .app-title {
+      font-size: 1.75rem;        /* bigger title */
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
     }
 
     .label {
@@ -105,10 +115,36 @@
       margin-bottom: 8px;
     }
 
+    .articles-header {
+      margin-top: 16px;
+      font-size: 0.85rem;
+      color: #9ca3af;
+    }
+
+    .app-subtitle {
+      font-size: 0.9rem;
+      color: #9ca3af;
+      margin-bottom: 18px;
+    }
+
     .input-row {
       display: flex;
-      gap: 10px;
+      align-items: stretch;   /* force same height */
+      justify-content: center;
+      gap: 16px;
+    }
+
+    .input-row input {
+    height: 56px;
+    box-sizing: border-box;
+    }
+
+    .input-row button {
+      height: 56px;
+      display: flex;
       align-items: center;
+      justify-content: center;
+      padding: 0 26px;
     }
 
     .input-wrapper {
@@ -189,12 +225,17 @@
     }
 
     .hint-row {
-      margin-top: 10px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: var(--muted);
+    display: flex;
+    justify-content: center;
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: #9ca3af;
+    text-align: center;
+    }
+
+    .hint-row span {
+    max-width: 520px;
+    line-height: 1.4;
     }
 
     .badge-soft {
@@ -208,8 +249,23 @@
     }
 
     .message {
-      margin-top: 10px;
-      font-size: 12px;
+      margin-top: 16px;
+      margin-left: auto;          /* center horizontally */
+      margin-right: auto;         /* center horizontally */
+      padding: 10px 12px;
+      border-radius: 999px;
+      font-size: 0.95rem;
+
+      display: flex;              /* full flex row */
+      align-items: center;
+      justify-content: center;    /* center contents */
+
+      gap: 10px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      color: #e5e7eb;
+
+      max-width: 760px;           /* keeps it from stretching too wide */
     }
 
     .message.error {
@@ -217,79 +273,187 @@
     }
 
     .message.info {
-      color: var(--muted);
+    background: rgba(17, 24, 39, 0.9);
     }
-    .articles-container {
-  margin-top: 24px;
+
+
+    .verdict-chip {
+      font-weight: 600;
+      font-size: 1rem;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.18);
+      color: #e0f2fe;
+    }
+
+    .message-secondary {
+    font-size: 0.85rem;
+    opacity: 0.9;
+    }
+
+ .articles-container {
+  margin-top: 22px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
-/* Card */
 .article-card {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 14px 16px;
-  backdrop-filter: blur(10px);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.6);
 }
 
-/* Title link */
 .article-title {
   font-size: 0.95rem;
-  font-weight: 500;
-  color: #f5f5f5;
+  font-weight: 600;
+  color: #e5e7eb;
   text-decoration: none;
 }
 
 .article-title:hover {
+  color: #38bdf8;
   text-decoration: underline;
 }
 
-/* Meta row */
+/* Row with stance + scores */
 .article-meta {
+  margin-top: 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.78rem;
-  color: #a0a0a0;
+  font-size: 0.8rem;
+  color: #9ca3af;
 }
 
-/* Stance badge */
 .stance-badge {
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 999px;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
 
-/* Colors per stance */
+/* Color-coded by stance */
 .stance-supports {
-  background: rgba(46, 204, 113, 0.12);
-  color: #2ecc71;
+  background: rgba(22, 163, 74, 0.2);
+  color: #4ade80;
 }
 
 .stance-refutes {
-  background: rgba(231, 76, 60, 0.12);
-  color: #e74c3c;
+  background: rgba(220, 38, 38, 0.2);
+  color: #f97373;
 }
 
 .stance-neutral,
-.stance-mixed {
-  background: rgba(241, 196, 15, 0.12);
-  color: #f1c40f;
+.stance-mixed,
+.stance-no_evidence {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
 }
 
-/* Small scores text */
 .article-scores {
-  font-size: 0.75rem;
-  color: #8a8a8a;
+  font-size: 0.78rem;
+  opacity: 0.9;
 }
+
+  .analyze-btn {
+  height: 56px;
+  padding: 0 26px;
+  box-sizing: border-box;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+
+  transition: all 0.25s ease;
+  }
+
+
+  .analyze-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 22px 50px rgba(15, 23, 42, 0.8);
+    border-color: rgba(96, 165, 250, 0.9);
+    background: linear-gradient(
+        135deg,
+        rgba(56, 189, 248, 0.22),
+        rgba(129, 140, 248, 0.18)
+      );
+    opacity: 0.98;
+  }
+
+  .analyze-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.7);
+  }
+
+  .intro-text {
+  text-align: center;
+  font-size: 0.9rem;
+  color: #9ca3af;
+  margin: 14px 0;
+  letter-spacing: 0.02em;
+  font-weight: 400;
+  width: 100%;
+  }
+
+  .verdict-chip {
+  font-weight: 600;
+  font-size: 1rem;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.18);
+  color: #e0f2fe;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(148, 163, 184, 0.55);
+}
+
+  /* likely_true / supports */
+  .verdict-true {
+    background: linear-gradient(
+      135deg,
+      rgba(22, 163, 74, 0.85),
+      rgba(56, 189, 248, 0.6)
+    );
+    color: #ecfdf5;
+  }
+
+  /* likely_false / refutes */
+  .verdict-false {
+    background: linear-gradient(
+      135deg,
+      rgba(220, 38, 38, 0.9),
+      rgba(248, 113, 113, 0.7)
+    );
+    color: #fef2f2;
+  }
+
+  /* uncertain / no_clear_winner */
+  .verdict-uncertain {
+    background: linear-gradient(
+      135deg,
+      rgba(245, 158, 11, 0.9),
+      rgba(56, 189, 248, 0.6)
+    );
+    color: #fffbeb;
+  }
+
 
   </style>
 </head>
@@ -320,23 +484,28 @@
           />
         </div>
 
-      <button id="analyzeButton" onclick="handleAnalyzeClick()">
-          <span id="btnLabel">Analyze</span>
+      <button id="analyzeBtn" class="analyze-btn" onclick="handleAnalyzeClick()">
+        Analyze Tweet
       </button>
 
       </div>
 
       <div class="hint-row">
-        <span class="badge-soft">Step 1 · Input</span>
-        <span>We’ll fetch articles & compute stance in the next steps.</span>
+        <span>Paste a tweet link above and click “Analyze Tweet”</span>
       </div>
 
       <div id="message" class="message info">
-      <div id="articlesContainer" class="articles-container"></div>
-        Waiting for a tweet URL.
-      </div>
+      <p class="intro-text">
+          Analysis results and article evidence will appear here.
+       </p>
+    <div id="articlesContainer" class="articles-container"></div>
     </div>
-  </div>
+
+
+  <p id="articlesHeader" class="articles-header"></p>
+  
+  <div id="articlesContainer" class="articles-container"></div>
+
 
  <script>
   let isBusy = false;
@@ -346,11 +515,44 @@
   }
 
   function setMessage(text, type = "info") {
-    const msgEl = document.getElementById("message");
-    if (!msgEl) return;
-    msgEl.textContent = text;
-    msgEl.className = "message " + type;
+  const el = document.getElementById("message");
+  if (!el) return;
+
+  el.className = `message ${type}`;
+
+  if (text.startsWith("Verdict:")) {
+    const parts = text.split("·").map((p) => p.trim());
+    const verdictPart = parts[0] || ""; // "Verdict: likely_false"
+    const restParts = parts.slice(1);   // confidence/support/refute/articles
+
+    // Extract the verdict value
+    const rawVerdictValue = verdictPart.split(":")[1]?.trim() || "";
+    const verdictValue = rawVerdictValue.toLowerCase();
+
+    // Map verdict string → CSS class + pretty label
+    let verdictClass = "verdict-uncertain";
+    let prettyVerdict = rawVerdictValue || "uncertain";
+
+    if (verdictValue.includes("true") || verdictValue.includes("support")) {
+      verdictClass = "verdict-true";
+    } else if (verdictValue.includes("false") || verdictValue.includes("refut")) {
+      verdictClass = "verdict-false";
+    } else {
+      verdictClass = "verdict-uncertain";
+    }
+
+    const restJoined = restParts.join(" · ");
+
+    el.innerHTML = `
+    <span class="verdict-chip ${verdictClass}">Verdict: ${prettyVerdict}</span>
+    <span class="message-secondary">${restJoined}</span>
+    `;
+
+  } else {
+    // Fallback: plain text
+    el.textContent = text;
   }
+}
 
   function setBusyState(busy) {
     isBusy = busy;
@@ -368,66 +570,87 @@
   }
 
   function renderArticles(articles) {
-    const container = document.getElementById("articlesContainer");
-    if (!container) {
-      console.warn("No #articlesContainer in DOM; skipping article rendering.");
-      return;
-    }
+  const container = document.getElementById("articlesContainer");
+  const header = document.getElementById("articlesHeader");
 
-    container.innerHTML = ""; // clear previous run
+  console.log("renderArticles called with:", articles);
 
-    if (!articles || articles.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "article-scores";
-      empty.textContent = "No articles found or no strong evidence.";
-      container.appendChild(empty);
-      return;
-    }
-
-    articles.forEach((art, idx) => {
-      const card = document.createElement("div");
-      card.className = "article-card";
-
-      const title = art.title || "Untitled article";
-      const link = art.link || "#";
-      const stance = art.article_stance || "neutral";
-
-      const support = Number(art.best_support_score ?? 0);
-      const refute = Number(art.best_refute_score ?? 0);
-
-      const stanceLabel =
-        stance === "supports"
-          ? "Supports"
-          : stance === "refutes"
-          ? "Refutes"
-          : stance === "mixed"
-          ? "Mixed"
-          : "Neutral";
-
-      const stanceClass =
-        stance === "supports"
-          ? "stance-supports"
-          : stance === "refutes"
-          ? "stance-refutes"
-          : "stance-neutral";
-
-      card.innerHTML = `
-        <a href="${link}" target="_blank" rel="noopener noreferrer" class="article-title">
-          ${idx + 1}. ${title}
-        </a>
-        <div class="article-meta">
-          <span class="stance-badge ${stanceClass}">
-            ${stanceLabel}
-          </span>
-          <span class="article-scores">
-            S: ${support.toFixed(2)} · R: ${refute.toFixed(2)}
-          </span>
-        </div>
-      `;
-
-      container.appendChild(card);
-    });
+  if (!container) {
+    console.warn("No #articlesContainer in DOM; skipping article rendering.");
+    return;
   }
+
+  // Clear previous content
+  container.innerHTML = "";
+
+  // No articles case
+  if (!articles || articles.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "article-scores";
+    empty.textContent = "No articles found or no strong evidence.";
+    container.appendChild(empty);
+    console.log("renderArticles: no articles, rendered empty message");
+    return;
+  }
+
+  // Render each article as a card
+  articles.forEach((art, idx) => {
+    console.log("Rendering article", idx, art);
+
+    const card = document.createElement("div");
+    card.className = "article-card";
+
+    const title = art.title || "Untitled article";
+    const link = art.link || "#";
+    const stance = art.article_stance || "neutral";
+
+    const support = Number(art.best_support_score ?? 0);
+    const refute  = Number(art.best_refute_score ?? 0);
+
+    const stanceLabel =
+      stance === "supports"
+        ? "Supports"
+        : stance === "refutes"
+        ? "Refutes"
+        : stance === "mixed"
+        ? "Mixed"
+        : stance === "no_evidence"
+        ? "No evidence"
+        : "Neutral";
+
+    const stanceClass =
+      stance === "supports"
+        ? "stance-supports"
+        : stance === "refutes"
+        ? "stance-refutes"
+        : "stance-neutral";
+
+    card.innerHTML = `
+      <a href="${link}" target="_blank" rel="noopener noreferrer" class="article-title">
+        ${idx + 1}. ${title}
+      </a>
+      <div class="article-meta">
+        <span class="stance-badge ${stanceClass}">
+          ${stanceLabel}
+        </span>
+        <span class="article-scores">
+          S: ${support.toFixed(2)} · R: ${refute.toFixed(2)}
+        </span>
+      </div>
+    `;
+
+    container.appendChild(card);
+  });
+
+  console.log(
+    "renderArticles: rendered",
+    articles.length,
+    "cards. Container children:",
+    container.children.length
+  );
+}
+
+
 
   async function handleAnalyzeClick() {
     if (isBusy) return;
@@ -461,19 +684,44 @@
       }
 
       const data = await res.json();
-      console.log("Backend response:", data);
+      console.log("Backend raw response:", data);
 
-      const verdict = data.verdict ?? "unknown";
-      const support = Number(data.global_best_support ?? 0).toFixed(3);
-      const refute = Number(data.global_best_refute ?? 0).toFixed(3);
+      // Handle both shapes:
+      // { verdict, articles, ... }  OR  { result: { verdict, articles, ... } }
+      const payload = data.result || data;
+      const verdict = payload.verdict || "unknown";
+      const support = Number(payload.global_best_support ?? 0);
+      const refute  = Number(payload.global_best_refute ?? 0);
+      const articles = payload.articles || [];
 
+      // ---- Confidence logic ----
+      let strength = Math.max(support, refute);
+      let confidenceLabel = "Low confidence";
+
+      if (verdict === "uncertain") {
+        confidenceLabel = "Low confidence (no clear winner)";
+      } else {
+        if (strength >= 0.8) {
+          confidenceLabel = "High confidence";
+        } else if (strength >= 0.6) {
+          confidenceLabel = "Medium confidence";
+        } else {
+          confidenceLabel = "Low confidence";
+        }
+      }
+
+      // Pretty-print verdict if you want (optional)
+      const prettyVerdict = verdict.replace(/_/g, " ");
+
+      // Now feed one string into setMessage
       setMessage(
-        `Verdict: ${verdict} · Support: ${support} · Refute: ${refute}`,
+        `Verdict: ${prettyVerdict} · Confidence: ${confidenceLabel} · ` +
+          `Support: ${support.toFixed(3)} · Refute: ${refute.toFixed(3)} · Articles: ${articles.length}`,
         "info"
       );
 
-      // Render top-k articles
-      renderArticles(data.articles || []);
+
+    renderArticles(articles);
     } catch (err) {
       console.error("Error in handleAnalyzeClick:", err);
       setMessage("UI error: " + (err?.message || "Unknown error"), "error");
