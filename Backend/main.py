@@ -221,6 +221,7 @@ def generate_search_queries(tweet_text, max_queries=3):
             final.append(q)
 
     return final[:max_queries]
+    
 
 ############################### STEP 3 - Using search queries on Google news API  #################################################################
 
@@ -317,8 +318,8 @@ def normalize_search_api_response(raw_articles):
             "source": r.get("source", "") or "",
             "raw": r,   # keep if you need more fields later
         })
-    return normalized
 
+    return normalized
 
 def dedupe_articles_by_link(articles):
 
@@ -378,6 +379,63 @@ def select_top_k_by_tfidf(tweet_text, articles, k=3):
         })
     return result[:k]
 
+from datetime import datetime, timedelta
+
+def filter_articles_by_time(
+    articles,
+    tweet_created_at,
+    window_before_hours: int = 2,
+    window_after_days: int = 2,
+):
+    """
+    Keep only articles whose publish time is within a window around the tweet.
+
+    - Drops clearly 'preview' articles published long before the tweet
+      (e.g., “India will need to beat Canada to reach the final”).
+    - Uses article['raw']['iso_date'] when available (SerpAPI field).
+
+    Args:
+        articles: list of article dicts (normalized).
+        tweet_created_at: datetime from Tweepy (response.data[0].created_at).
+        window_before_hours: how many hours before the tweet to still allow.
+        window_after_days: how many days after the tweet to allow.
+
+    Returns:
+        Filtered list of articles.
+    """
+    if tweet_created_at is None:
+        return articles  # nothing to do
+
+    # Tweepy gives a timezone-aware datetime, keep it as is
+    tweet_dt = tweet_created_at
+
+    min_dt = tweet_dt - timedelta(hours=window_before_hours)
+    max_dt = tweet_dt + timedelta(days=window_after_days)
+
+    filtered = []
+
+    for art in articles:
+        raw = art.get("raw") or {}
+        iso = raw.get("iso_date")
+        if not iso:
+            # if no date, keep it (you can change this to 'continue' if you prefer)
+            filtered.append(art)
+            continue
+
+        try:
+            # iso_date looks like '2025-11-20T13:55:00Z'
+            iso_clean = iso.replace("Z", "+00:00")
+            art_dt = datetime.fromisoformat(iso_clean)
+        except Exception:
+            # if parsing fails, keep it
+            filtered.append(art)
+            continue
+
+        if min_dt <= art_dt <= max_dt:
+            filtered.append(art)
+
+    return filtered
+
 ############################### STEP 4 - Article body collection (Evidence)  #################################################################
 
 SBERT_MODEL_NAME = "all-MiniLM-L6-v2"
@@ -417,6 +475,7 @@ def split_sentences(text):
     text = (text or "").strip()
     if not text:
         return []
+    
     return sent_tokenize(text)
 
 def sbert_encode(texts):
@@ -543,23 +602,44 @@ def attach_stance_to_evidence(claim_text, articles):
             })
 
         enriched.append(new_art)
+
     return enriched
 
 def summarize_article_stance(
     articles_with_sentence_stance,
     support_thresh: float = 0.6,
     refute_thresh: float = 0.6,
-    margin: float = 0.1,):
-
+    margin: float = 0.1,
+    min_sim_for_nli: float = 0.5,
+):
     """
     Given a list of articles where each article has sentence-level stance info,
     compute an article-level stance.
 
+    We only consider sentences with similarity >= min_sim_for_nli when
+    aggregating support/refute scores. This avoids low-relevance sentences
+    (low similarity) from dominating the stance.
+
+    Each input article is expected to have:
+      - "evidence": list of dicts with:
+            {
+                "sentence": str,
+                "similarity": float,
+                "stance": str (optional),
+                "nli_probs": {
+                    "entailment": float,
+                    "contradiction": float,
+                    "neutral": float
+                }
+            }
+
     Returns:
         List of articles, each extended with:
           - article_stance: 'supports' | 'refutes' | 'neutral' | 'mixed' | 'no_evidence'
-          - best_support_score: max entailment prob across evidence (or 0.0)
-          - best_refute_score: max contradiction prob across evidence (or 0.0)
+          - best_support_score: max entailment prob across (relevant) evidence
+          - best_refute_score: max contradiction prob across (relevant) evidence
+
+        The "body" field is removed from each article to keep responses lighter.
     """
     summarized = []
 
@@ -570,10 +650,16 @@ def summarize_article_stance(
         best_refute = 0.0
         has_any_probs = False
 
-        # We keep evidence as-is, just read from it
+        # Read NLI probabilities from each evidence sentence,
+        # but only if it's relevant enough (similarity threshold).
         for ev in evidence:
             probs = ev.get("nli_probs")
             if not probs:
+                continue
+
+            sim = float(ev.get("similarity", 0.0))
+            if sim < min_sim_for_nli:
+                # Too weakly related to the claim, ignore for stance aggregation
                 continue
 
             has_any_probs = True
@@ -611,18 +697,22 @@ def summarize_article_stance(
         new_art["article_stance"] = article_stance
         new_art["best_support_score"] = best_support
         new_art["best_refute_score"] = best_refute
+
+        # Drop raw body text to keep response compact
         new_art.pop("body", None)
+
         summarized.append(new_art)
 
     return summarized
+
 
 def aggregate_claim_verdict(
     articles_with_article_stance,
     claim_text: str,
     support_thresh: float = 0.7,
     refute_thresh: float = 0.7,
-    margin: float = 0.15,):
-
+    margin: float = 0.15,
+):
     """
     Aggregate article-level stances into a single claim-level verdict.
 
@@ -632,17 +722,22 @@ def aggregate_claim_verdict(
             - best_support_score
             - best_refute_score
         claim_text: the original tweet / claim string
-        support_thresh: min support score to call claim likely true
-        refute_thresh: min refute score to call claim likely false
-        margin: required gap between best support and best refute
+        support_thresh: baseline support score to consider 'strong support'
+        refute_thresh: baseline refute score to consider 'strong refute'
+        margin: gap between support and refute when deciding clear winner
 
     Returns:
         dict with:
             - claim: original claim_text
-            - verdict: 'likely_true' | 'likely_false' | 'uncertain'
+            - verdict: 'likely_true' | 'likely_false' | 'uncertain' | 'conflicting'
+            - reason: textual explanation for verdict
             - global_best_support
             - global_best_refute
-            - counts of article stances
+            - num_supporting_articles
+            - num_refuting_articles
+            - num_neutral_articles
+            - num_mixed_articles
+            - num_no_evidence_articles
             - articles: original list with stances (unchanged)
     """
     if not articles_with_article_stance:
@@ -693,22 +788,58 @@ def aggregate_claim_verdict(
             # Unknown label – treat as neutral
             num_neutral += 1
 
-    # Decide claim-level verdict
+    # --- Claim-level verdict logic ---
+
+    verdict = "uncertain"
+    reason = "insufficient_or_conflicting_evidence"
+
+    # 1) Strong evidence FOR the claim:
+    #    at least one supporting article with high support,
+    #    and support clearly above refute by 'margin'.
     if (
-        global_best_refute >= refute_thresh
-        and global_best_refute >= global_best_support + margin
-    ):
-        verdict = "likely_false"
-        reason = "strong_refuting_evidence"
-    elif (
         global_best_support >= support_thresh
         and global_best_support >= global_best_refute + margin
+        and num_supporting >= 1
     ):
         verdict = "likely_true"
         reason = "strong_supporting_evidence"
-    else:
-        verdict = "uncertain"
-        reason = "no_clear_winner"
+
+    # 2) Strong evidence AGAINST the claim:
+    #    multiple refuting articles, strong refute score,
+    #    and support not competitive.
+    elif (
+        global_best_refute >= max(refute_thresh, 0.9)  # be stricter for refute
+        and num_refuting >= 2
+        and global_best_refute >= global_best_support + margin
+        and global_best_support < support_thresh * 0.6
+    ):
+        verdict = "likely_false"
+        reason = "strong_refuting_evidence"
+
+    # 3) Both sides strong → conflicting
+    elif (
+        global_best_support >= support_thresh
+        and global_best_refute >= refute_thresh
+    ):
+        verdict = "conflicting"
+        reason = "strong_support_and_refute_evidence"
+
+    #  Build a user-friendly view of articles
+    user_friendly_articles = []
+    for art in articles_with_article_stance:
+        art_out = {k: v for k, v in art.items()}
+
+        if art_out.get("article_stance") == "no_evidence":
+            # Option 1: softer label
+            art_out["article_stance"] = "no_relevant_evidence"
+
+            # Option 2: hide confusing scores & empty evidence from the user
+            art_out.pop("best_support_score", None)
+            art_out.pop("best_refute_score", None)
+            if not art_out.get("evidence"):
+                art_out.pop("evidence", None)
+
+        user_friendly_articles.append(art_out)
 
     return {
         "claim": claim_text,
@@ -721,13 +852,13 @@ def aggregate_claim_verdict(
         "num_neutral_articles": num_neutral,
         "num_mixed_articles": num_mixed,
         "num_no_evidence_articles": num_no_evidence,
-        "articles": articles_with_article_stance
+        "articles": user_friendly_articles,
     }
+
 
 def run_pipeline_from_tweet_url(url, top_k_articles = 3):
 
     # 1) validate & extract tweet id
-
     tweetid = extract_tweet_id(url)
     if not tweetid:
         raise ValueError("Invalid tweet link. Expected something like https://x.com/user/status/12345")
@@ -756,41 +887,48 @@ def run_pipeline_from_tweet_url(url, top_k_articles = 3):
     # 5) dedupe
     deduped_list = dedupe_articles_by_link(gnews_response)
 
-    # 6) top-k similar by TF-IDF
+    # 6) Filter by time
+    deduped_articles = filter_articles_by_time(
+    deduped_list,
+    tweet_created_at=tweet_created_date,
+)
+    # 7) top-k similar by TF-IDF
     top_similar_articles = select_top_k_by_tfidf(
         tweet_body,
-        deduped_list,
+        deduped_articles,
         k=top_k_articles,
     )
 
-    # 7) fetch bodies
+    # 8) fetch bodies
     for a in top_similar_articles:
         url = a.get("link")
         body = clean_query_text(fetch_article_body(url))
         a["body"] = body
 
-    # 8) SBERT sentence extraction
+    # 9) SBERT sentence extraction
     articles_with_evidence = extract_top_sentences_sbert(
         tweet_body,
         top_similar_articles,
         top_k_sentences=3,
     )
 
-    # 9) NLI stance per sentence
+    # 10) NLI stance per sentence
     articles_with_sentence_stance = attach_stance_to_evidence(
         tweet_body,
         articles_with_evidence,
     )
 
-    # 10) article-level stance
+    # 11) article-level stance
     articles_with_article_stance = summarize_article_stance(
         articles_with_sentence_stance
     )
-    # 10) claim-level verdict
+    # 12) claim-level verdict
     final_result = aggregate_claim_verdict(
         articles_with_article_stance,
         tweet_body,
     )
+
     return final_result
 
-#url = "https://x.com/DeusXMachina14/status/1990469787395432560"  # or any tweet
+#url = "https://x.com/DDNewslive/status/1994689351180325124"
+

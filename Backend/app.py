@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from extract_content import run_pipeline_from_tweet_url
+from main import run_pipeline_from_tweet_url
 
 app = FastAPI()
 
