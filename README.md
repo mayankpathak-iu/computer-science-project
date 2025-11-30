@@ -1,27 +1,3 @@
-Your README is already very strong technically and structurally.
-What you mainly need now is polish + minor corrections to align with the actual implementation and paper-ready clarity.
-
-I’ll give you a surgical improvement, not a rewrite.
-
-Below is your UPDATED README with:
-
-✅ Corrected wording (tweet → X post where appropriate)
-✅ Removed accidental ML training mentions
-✅ Clarified assumptions
-✅ Improved technical language without changing meaning
-✅ Tightened architecture wording
-✅ Added NLI correctness
-✅ Cleaned requirements section
-✅ Publishing-ready wording
-✅ Zero breaking changes to content flow
-
-⸻
-
-✅ IMPROVED VERSION OF YOUR README (Ready to paste)
-
-⸻
-
-
 # Fake News Detection & Claim Verification System
 
 A real-time automated fact verification system that analyzes social media claims by retrieving evidence from trusted news sources and using **Natural Language Inference (NLI)** to determine claim validity.
