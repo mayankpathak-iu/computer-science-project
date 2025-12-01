@@ -81,12 +81,12 @@ The following videos demonstrate the complete working of the Fake News Detection
 
 ---
 
-### 📺 Demo 1 — Full End-to-End Walkthrough
+### 📺 Demo 1
 <a href="https://youtu.be/ozSngJRwNhw" target="_blank">
   <img src="https://img.youtube.com/vi/ozSngJRwNhw/maxresdefault.jpg" alt="Demo 1 - System Walkthrough" width="720">
 </a>
 
-### 📺 Demo 2 — Reasoning Breakdown & Output Explanation
+### 📺 Demo 2
 <a href="https://youtu.be/kHO6tnqeQws" target="_blank">
   <img src="https://img.youtube.com/vi/kHO6tnqeQws/maxresdefault.jpg" alt="Demo 2 - Reasoning & Verdict" width="720">
 </a>
