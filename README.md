@@ -74,6 +74,30 @@ All article stances are aggregated to produce the final verdict:
 - ❌ **Likely False** — strong contradicting evidence found
 - ⚠️ **Uncertain** — conflicting or insufficient evidence
 
+
+## 🎥 Demo (System Walkthrough & Results)
+
+The following videos demonstrate the complete working of the Fake News Detection & Claim Verification System, including real-time evidence retrieval, sentence ranking, and NLI-based reasoning.
+
+---
+
+### 📺 Demo 1 — Full End-to-End Walkthrough
+<a href="https://youtu.be/ozSngJRwNhw" target="_blank">
+  <img src="https://img.youtube.com/vi/ozSngJRwNhw/maxresdefault.jpg" alt="Demo 1 - System Walkthrough" width="720">
+</a>
+
+### 📺 Demo 2 — Reasoning Breakdown & Output Explanation
+<a href="https://youtu.be/kHO6tnqeQws" target="_blank">
+  <img src="https://img.youtube.com/vi/kHO6tnqeQws/maxresdefault.jpg" alt="Demo 2 - Reasoning & Verdict" width="720">
+</a>
+
+Covers:
+✔ Article-level stance calculation  
+✔ Support vs contradiction scores  
+✔ Confidence thresholds  
+✔ Edge cases and ambiguous scenarios  
+✔ Interpretation of output  
+
 ---
 
 ## 🚀 Getting Started
@@ -136,215 +160,87 @@ SERPAPI_KEY=your_serpapi_key_here
 # Run the main verification pipeline
 python Backend/main.py
 
-```
+
+⸻
+
+📦 requirements.txt
+
+torch
+transformers
+sentence-transformers
+spacy
+nltk
+rake-nltk
+newspaper3k
+beautifulsoup4
+lxml
+lxml_html_clean
+requests
+python-dotenv
+tweepy
+numpy
+pandas
+scikit-learn
+regex
+tqdm
+
+
+⸻
+
+📂 Project Structure
+
+Backend/
+├── main.py
+├── app.py
+models/
+├── model.py
+Frontend/
+└── index.html
+requirements.txt
+README.md
+
+
+⸻
+
+✅ Strengths
+	•	Evidence-driven
+	•	Explainable reasoning
+	•	Real-time fact checking
+	•	No training required
+	•	Neural semantic reasoning
+	•	Scalable API design
+
+⸻
+
+⚠️ Limitations
+	•	English only
+	•	Requires news coverage
+	•	No access to paywalled articles
+	•	Depends on external APIs
+	•	NLI confidence ≠ factual certainty
+	•	Opinions cannot be verified
+
+⸻
+
+🔭 Future Work
+	•	Multilingual support
+	•	Claim decomposition
+	•	Credibility scoring
+	•	Multimodal fact checking
+	•	LLM-driven reasoning layer
+	•	Evidence summarization
+	•	Domain weighting
+
+⸻
+
+📚 References
+	•	Sentence-BERT – https://arxiv.org/abs/1908.10084
+	•	RoBERTa – https://arxiv.org/abs/1907.11692
+	•	MNLI – https://cims.nyu.edu/~sbowman/multinli
+	•	FEVER – https://fever.ai
+
+⸻
+
+⭐ If this system helped you, consider starring the repo.
 
 ---
-
-## 📦 Requirements
-
-Create a `requirements.txt` file with the following dependencies:
-
-```txt
-# Core ML and NLP
-torch>=2.0.0
-transformers>=4.30.0
-sentence-transformers>=2.2.2
-spacy>=3.6.0
-nltk>=3.8.1
-
-# Text processing
-rake-nltk>=1.0.6
-newspaper3k>=0.2.8
-beautifulsoup4>=4.12.0
-lxml>=4.9.2
-lxml_html_clean>=0.1.0
-
-# API and web
-tweepy>=4.14.0
-requests>=2.31.0
-python-dotenv>=1.0.0
-
-# Data processing
-numpy>=1.24.0
-pandas>=2.0.0
-scikit-learn>=1.3.0
-
-# Utils
-regex>=2023.6.3
-```
-
-Install all at once:
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## Project Structure
-
-```
-fake-news-detection/
-│
-├── Backend/
-│   ├── main.py                 # main data processing pipeline
-│   ├── app.py                  # Web app using FastAPI
-│
-├── models/
-│   ├── model.py                 # Sentence embedding and ranking, RoBERTa NLI inference
-│   ├── __init__.py              # init file to import modules
-│
-│
-├── Frontend/                      
-│    ├── index.html              # contains all the frontend/UI
-│                                   
-├── data/
-│   └── FEVER_train.json         # Sample test data
-│
-├── .env                         # API keys (not committed)
-├── .gitignore
-├── requirements.txt
-└── README.md
-```
-
----
-
-## Verification Logic
-
-### **Article Stance Classification**
-
-For each article, the system calculates:
-```python
-E = max entailment score across all sentences
-C = max contradiction score across all sentences
-```
-
-Classification rules:
-- **SUPPORTS** if `E ≥ 0.6` and `E ≥ C + 0.1`
-- **REFUTES** if `C ≥ 0.6` and `C ≥ E + 0.1`
-- **MIXED** if both scores exceed thresholds
-- **NEUTRAL** if scores are weak but sentence is relevant
-- **NO_EVIDENCE** if no relevant sentences found
-
-### **Final Verdict Aggregation**
-
-```python
-best_contradiction = max contradiction score across all articles
-best_entailment = max entailment score across all articles
-```
-
-Decision rules:
-| Condition | Verdict |
-|-----------|---------|
-| `best_contradiction ≥ 0.7` | ❌ Likely False |
-| `best_entailment ≥ 0.7` | ✅ Likely True |
-| Weak or conflicting signals | ⚠️ Uncertain |
-
----
-
-## Technical Details
-
-### **Why Sentence-BERT?**
-- Captures semantic meaning beyond keyword matching
-- Fast inference (much faster than full transformers)
-- Pre-trained on diverse text pairs
-- Excellent at measuring text similarity
-
-### **Why RoBERTa-MNLI?**
-- State-of-the-art performance on natural language inference
-- Trained on 433k human-annotated sentence pairs
-- Handles complex reasoning (negation, paraphrasing, contradiction)
-- Better than keyword-based or simple similarity approaches
-
-### **Model Sizes**
-- `all-MiniLM-L6-v2`: ~80 MB
-- `roberta-large-mnli`: ~1.4 GB
-- Total model storage: ~1.5 GB
-
----
-
-## Use Cases
-
-1. **Individual Users** — Verify suspicious social media posts before sharing
-2. **Journalists** — Quick fact-checking during news reporting
-3. **Researchers** — Study misinformation spread patterns
-4. **Educators** — Teach media literacy with real examples
-5. **Platform Moderators** — Flag potentially misleading content
-
----
-
-## System Assumptions
-
-| Assumption | Rationale |
-|------------|-----------|
-| English-only input | NLP models are English-trained |
-| News articles are generally reliable | Major outlets have editorial standards |
-| Recent articles are more relevant | Prioritizes current context |
-| Some claims are inherently unverifiable | Breaking news, opinions, predictions |
-| Multiple sources reduce bias | Aggregating diverse perspectives |
-
----
-
-## Configuration
-
-You can adjust system behavior by modifying these parameters:
-
-```python
-# In your configuration file
-CONFIG = {
-    'max_articles_per_query': 5,           # Articles to retrieve per search query
-    'similarity_threshold': 0.7,           # Min similarity for evidence selection
-    'entailment_threshold': 0.6,           # Min score for "supports" classification
-    'contradiction_threshold': 0.6,        # Min score for "refutes" classification
-    'verdict_confidence_threshold': 0.7,   # Min score for definitive verdict
-    'max_evidence_sentences': 3,           # Top sentences per article
-}
-```
-
----
-
-## Strengths
-
-- **Evidence-Based** — Uses real news sources, not just pattern recognition
-- **Explainable** — Shows which sentences support or contradict the claim
-- **Real-Time** — Retrieves current information, not limited to training data
-- **Modular** — Easy to swap components (different models, search APIs, etc.)
-- **No Training Required** — Uses pre-trained models, works out of the box
-- **Scalable** — Can process multiple claims in parallel
-
----
-
-## Limitations
-
-1. **Language** — Currently English-only
-2. **Paywalls** — Cannot access articles behind paywalls
-3. **API Costs** — SerpAPI has rate limits and costs
-4. **Breaking News** — Very recent events may lack coverage
-5. **Computational Resources** — Large models require significant RAM
-6. **Sarcasm & Satire** — May struggle with non-literal language
-7. **Opinion Claims** — Cannot verify subjective statements
-
----
-
-## Future Improvements
-
-- [ ] **Source Credibility Scoring** — Weight evidence by publisher reputation
-- [ ] **Multilingual Support** — Extend to Spanish, French, German, etc.
-- [ ] **Claim Decomposition** — Break complex claims into verifiable sub-claims
-- [ ] **Temporal Reasoning** — Better handling of time-sensitive claims
-- [ ] **Visual Analysis** — Verify images and videos in tweets
-- [ ] **User Feedback Loop** — Learn from user corrections
-- [ ] **Stance Detection Training** — Fine-tune models on fact-checking datasets
-- [ ] **Caching Layer** — Store results for frequently checked claims
-
----
-
-## References
-
-- [Sentence-BERT Paper](https://arxiv.org/abs/1908.10084)
-- [RoBERTa Paper](https://arxiv.org/abs/1907.11692)
-- [MNLI Dataset](https://cims.nyu.edu/~sbowman/multinli/)
-- [FEVER Dataset](https://fever.ai/)
-
----
-
-**⭐ If you find this project useful, please consider giving it a star on GitHub!**
